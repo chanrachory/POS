@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS System</title>
+    <link rel="stylesheet" href="Style.CSS">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Oleo+Script&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+<body>
+    <!-- NAVIGATION BAR -->
+    <div class="navbar">
+        <h1>Coffee Shop POS System</h1>
+        <div class="nav-links">
+            <a href="#">Admin</a>
+            <a href="#">Loan</a>
+            <a href="#">Return</a>
+            <a href="#" id="toggleAddItemLink">Insert</a>
+            <a href="#">Stock</a>
+            <a href="#">Dashboard</a>
+            <a href="#">Home</a>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <!-- Add Item Form -->
+        <div class="add-item-form" id="addItemForm" style="display: none;">
+            <h2><i class="fas fa-plus-circle"></i> Add New Item</h2>
+            <form id="stockForm">
+                <div class="input-group">
+                    <i class="fas fa-tags"></i>
+                    <input type="text" id="category" name="category" placeholder="Category" required>
+                </div>
+        
+                <div class="input-group">
+                    <i class="fas fa-mug-hot"></i>
+                    <input type="text" id="name" name="name" placeholder="Product Name" required>
+                </div>
+        
+                <div class="input-group">
+                    <i class="fas fa-dollar-sign"></i>
+                    <input type="number" id="price" name="price" step="0.01" placeholder="Price" required>
+                </div>
+        
+                <div class="input-group">
+                    <i class="fas fa-image"></i>
+                    <input type="file" id="image" name="image" accept="image/*" required>
+                </div>
+        
+                <button type="submit"><i class="fas fa-check-circle"></i> Add Stock</button>
+            </form>
+        </div>
+
+        <!-- Main Billing Container -->
+        <div class="container">
+            <!-- Categories -->
+            <div class="categories-section">
+                <h2>Category</h2>
+                <ul id="categoriesList"></ul>
+            </div>
+
+            <!-- Items -->
+            <div class="items-section">
+                <h2>Items</h2>
+                <div id="itemsGrid" class="grid"></div>
+            </div>
+
+            <!-- Bill -->
+            <div class="bill-section">
+                <h2>Bill</h2>
+                <table id="billTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Qty</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billBody"></tbody>
+                </table>
+                <h3>Total: $<span id="totalAmount">0.00</span></h3>
+                <button id="checkoutButton">Checkout</button>
+                <!-- QR Code Button -->
+                <button id="qrButton" class="qr-button">Show QR</button>
+                <!-- QR Code Image -->
+                <div id="qrCodeContainer" style="display:none;">
+                    <img src="/PictureOfCoffee/QR.jpg" alt="QR Code" id="qrCode" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $("#toggleAddItemLink").click(function() {
+            $("#addItemForm").slideToggle();
+        });
+
+        let cart = {};
+
+        function addItemToCart(item) {
+            if (!item.id || !item.name || !item.price) return;
+
+            if (cart[item.id]) {
+                cart[item.id].quantity = Math.max(1, cart[item.id].quantity + 1);
+            } else {
+                cart[item.id] = {
+                    name: item.name,
+                    price: parseFloat(item.price),
+                    quantity: 1
+                };
+            }
+            updateBillTable();
+        }
+
+        function updateBillTable() {
+            let billBody = $("#billBody");
+            billBody.empty();
+
+            let totalAmount = 0;
+            for (let itemId in cart) {
+                let item = cart[itemId];
+                let row = ` 
+                    <tr> 
+                        <td>${item.name}</td>
+                        <td>${item.price.toFixed(2)}</td>
+                        <td>
+                            <button class="qty-btn minus" data-id="${itemId}">-</button>
+                            ${item.quantity}
+                            <button class="qty-btn plus" data-id="${itemId}">+</button>
+                        </td>
+                        <td>${(item.price * item.quantity).toFixed(2)}</td>
+                    </tr> 
+                `;
+                billBody.append(row);
+                totalAmount += item.price * item.quantity;
+            }
+
+            $("#totalAmount").text(totalAmount.toFixed(2));
+        }
+
+        $(document).on("click", ".qty-btn", function () {
+            const id = $(this).data("id");
+            if (!cart[id]) return;
+
+            if ($(this).hasClass("plus")) {
+                cart[id].quantity += 1;
+            } else if ($(this).hasClass("minus")) {
+                cart[id].quantity -= 1;
+                if (cart[id].quantity <= 0) {
+                    delete cart[id];
+                }
+            }
+
+            updateBillTable();
+        });
+
+        function loadCategories() {
+            $.ajax({
+                url: "fetch_categories.php",
+                type: "GET",
+                success: function(response) {
+                    $("#categoriesList").html(response);
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error loading categories:", error);
+                }
+            });
+        }
+
+        function loadItems(category = "") {
+            $.ajax({
+                url: "fetch_items.php",
+                type: "GET",
+                data: { category: category },
+                success: function(response) {
+                    $("#itemsGrid").html(response);
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error loading items:", error);
+                }
+            });
+        }
+
+        loadCategories();
+        loadItems();
+
+        $("#stockForm").on("submit", function(e) {
+            e.preventDefault();
+
+            var formData = new FormData(this);
+
+            $.ajax({
+                url: "insert.php",
+                type: "POST",
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function(response) {
+                    try {
+                        const res = JSON.parse(response);
+                        alert(res.success || res.error);
+                    } catch (e) {
+                        alert(response);
+                    }
+                    $("#stockForm")[0].reset();
+                    loadCategories();
+                    loadItems();
+                },
+                error: function(xhr, status, error) {
+                    console.error("Insert error:", error);
+                }
+            });
+        });
+
+        $(document).on("click", ".category-item", function() {
+            let category = $(this).text();
+            loadItems(category);
+        });
+
+        $(document).on("click", ".item-card", function() {
+            let item = {
+                id: $(this).data("id"),
+                name: $(this).data("name"),
+                price: $(this).data("price")
+            };
+            addItemToCart(item);
+        });
+
+        $("#checkoutButton").click(function() {
+            let cartDetails = "Your Order Summary:\n\n";
+            let totalAmount = 0;
+            for (let itemId in cart) {
+                let item = cart[itemId];
+                cartDetails += `Item: ${item.name}\n`;
+                cartDetails += `Price: $${item.price.toFixed(2)}\n`;
+                cartDetails += `Quantity: ${item.quantity}\n`;
+                cartDetails += `Subtotal: $${(item.price * item.quantity).toFixed(2)}\n\n`;
+                totalAmount += item.price * item.quantity;
+            }
+            cartDetails += `Total Amount: $${totalAmount.toFixed(2)}`;
+
+            alert(cartDetails);
+
+            cart = {};
+            updateBillTable();
+        });
+
+        // Show QR code when the "Show QR" button is clicked
+        $("#qrButton").click(function() {
+            $("#qrCodeContainer").toggle();
+        });
+    </script>
+</body>
+</html>
